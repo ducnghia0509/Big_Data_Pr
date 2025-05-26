@@ -9,8 +9,9 @@ from datetime import datetime, date, time, timedelta, timezone
 # --- Configuration ---
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
 KAFKA_OHLCV_1M_TOPIC = "crypto_ohlcv_1m" # Chỉ dùng topic này
+ELASTICSEARCH_HOST = os.getenv("ELASTICSEARCH_HOST", "172.17.0.2")
 
-ELASTICSEARCH_HOST = os.getenv("ELASTICSEARCH_HOST", "192.168.30.128")
+# ELASTICSEARCH_HOST = os.getenv("ELASTICSEARCH_HOST", "192.168.30.128")
 ELASTICSEARCH_PORT = os.getenv("ELASTICSEARCH_PORT", "9200")
 
 ELASTICSEARCH_OHLCV_STATS_INDEX = "crypto_ohlcv_1m_stats" 
@@ -19,7 +20,10 @@ ELASTICSEARCH_CHART_1M_INDEX = "crypto_ohlcv_1m_chartdata"
 
 ELASTICSEARCH_NODE_WAN_ONLY = os.getenv("ES_NODES_WAN_ONLY", "false")
 
-CHECKPOINT_BASE_PATH = f"hdfs://localhost:9000/user/{os.environ.get('USER', 'hadoop')}/crypto_project/checkpoint/stream_ohlcv_1m_processor"
+CHECKPOINT_BASE_PATH = "file:///Users/nguyenthithutam/Big_Data_Pr/checkpoint/stream_ohlcv_1m_processor"
+
+# CHECKPOINT_BASE_PATH = "hdfs://172.18.0.2:8020/user/nguyenthithutam/crypto_project/checkpoint/stream_ohlcv_1m_processor"
+# CHECKPOINT_BASE_PATH = f"hdfs://localhost:9000/user/{os.environ.get('USER', 'hadoop')}/crypto_project/checkpoint/stream_ohlcv_1m_processor"
 WINDOW_DURATION_FOR_STATS = os.getenv("OHLCV_WINDOW_DURATION", "10 minutes") 
 SLIDE_DURATION_FOR_STATS = os.getenv("OHLCV_SLIDE_DURATION", "1 minute")   
 

@@ -98,14 +98,14 @@ def fetch_historical_data(symbol, timeframe, since_timestamp, end_timestamp=None
 # --- Xử lý và Lưu trữ ---
 if __name__ == "__main__":
     os.makedirs(LOCAL_SAVE_PATH, exist_ok=True)
-    try:
-        subprocess.run(['hdfs', 'dfs', '-mkdir', '-p', HDFS_TARGET_PATH], check=True, capture_output=True)
-        print(f"Thư mục HDFS {HDFS_TARGET_PATH} đã được đảm bảo tồn tại.")
-    except subprocess.CalledProcessError as e:
-        print(f"Lỗi khi tạo thư mục HDFS {HDFS_TARGET_PATH}: {e.stderr.decode()}")
-    except FileNotFoundError:
-        print("Lỗi: Lệnh 'hdfs' không tìm thấy. Đảm bảo Hadoop đã được cài đặt và PATH được cấu hình.")
-        exit(1)
+    # try:
+    #     subprocess.run(['hdfs', 'dfs', '-mkdir', '-p', HDFS_TARGET_PATH], check=True, capture_output=True)
+    #     print(f"Thư mục HDFS {HDFS_TARGET_PATH} đã được đảm bảo tồn tại.")
+    # except subprocess.CalledProcessError as e:
+    #     print(f"Lỗi khi tạo thư mục HDFS {HDFS_TARGET_PATH}: {e.stderr.decode()}")
+    # except FileNotFoundError:
+    #     print("Lỗi: Lệnh 'hdfs' không tìm thấy. Đảm bảo Hadoop đã được cài đặt và PATH được cấu hình.")
+    #     exit(1)
 
 
     start_timestamp_ms = exchange.parse8601(START_DATE_STR)

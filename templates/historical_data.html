@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,50 +11,70 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
         /* --- Global Styles (Tương đồng với realtime_dashboard.html) --- */
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"; 
-            margin: 0; 
-            background-color: #f4f6f8; /* Light gray background */
-            color: #333; /* Darker text color for better readability */
-            display: flex; 
-            flex-direction: column; 
-            min-height: 100vh; 
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            margin: 0;
+            background-color: #f4f6f8;
+            /* Light gray background */
+            color: #333;
+            /* Darker text color for better readability */
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
             line-height: 1.6;
         }
-        header { 
-            background-color: #2c3e50; /* Dark blue-gray */
-            color: white; 
-            padding: 1rem 1.5rem; /* Consistent padding */
-            text-align: center; 
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+
+        header {
+            background-color: #2c3e50;
+            /* Dark blue-gray */
+            color: white;
+            padding: 1rem 1.5rem;
+            /* Consistent padding */
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
-        header h1 { 
-            margin: 0; 
-            font-size: 1.8em; /* Consistent font size */
+
+        header h1 {
+            margin: 0;
+            font-size: 1.8em;
+            /* Consistent font size */
             font-weight: 500;
         }
-        nav { 
-            background-color: #34495e; /* Slightly lighter blue-gray */
-            padding: 0.75rem 0; /* Consistent padding */
-            text-align: center; 
+
+        nav {
+            background-color: #34495e;
+            /* Slightly lighter blue-gray */
+            padding: 0.75rem 0;
+            /* Consistent padding */
+            text-align: center;
         }
-        nav a { 
-            margin: 0 1.5rem; /* Consistent margin */
-            text-decoration: none; 
-            color: #ecf0f1; /* Light gray text */
-            font-weight: bold; 
-            font-size: 1.05rem; /* Consistent font size */
+
+        nav a {
+            margin: 0 1.5rem;
+            /* Consistent margin */
+            text-decoration: none;
+            color: #ecf0f1;
+            /* Light gray text */
+            font-weight: bold;
+            font-size: 1.05rem;
+            /* Consistent font size */
             transition: color 0.2s ease-in-out;
         }
-        nav a:hover, nav a.active-nav { 
-            color: #5dade2; /* Lighter blue for hover/active */
+
+        nav a:hover,
+        nav a.active-nav {
+            color: #5dade2;
+            /* Lighter blue for hover/active */
         }
-        .container { /* Đổi tên từ main-content cho nhất quán */
-            flex: 1; 
-            padding: 1.5rem; 
-            max-width: 1400px; /* Max width cho content */
-            margin: 1.5rem auto; 
-            width: 95%; 
+
+        .container {
+            /* Đổi tên từ main-content cho nhất quán */
+            flex: 1;
+            padding: 1.5rem;
+            max-width: 1400px;
+            /* Max width cho content */
+            margin: 1.5rem auto;
+            width: 95%;
         }
 
         /* --- Styles specific to Historical Page Controls --- */
@@ -61,92 +82,143 @@
             background-color: #ffffff;
             padding: 1.5rem;
             border-radius: 0.5rem;
-            box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
             margin-bottom: 1.5rem;
             display: flex;
-            flex-wrap: wrap; /* Cho phép các control xuống hàng trên màn hình nhỏ */
-            gap: 1.5rem; /* Khoảng cách giữa các control group */
-            align-items: center; /* Căn giữa các item theo chiều dọc */
-            justify-content: center; /* Căn giữa các control group */
+            flex-wrap: wrap;
+            /* Cho phép các control xuống hàng trên màn hình nhỏ */
+            gap: 1.5rem;
+            /* Khoảng cách giữa các control group */
+            align-items: center;
+            /* Căn giữa các item theo chiều dọc */
+            justify-content: center;
+            /* Căn giữa các control group */
         }
-        .control-group { 
-            display: flex; 
-            flex-direction: column; 
-            align-items: flex-start; /* Căn label bên trái */
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            /* Căn label bên trái */
         }
-        .control-group label { 
-            margin-bottom: 0.5rem; 
-            font-weight: 600; 
-            color: #495057; 
+
+        .control-group label {
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #495057;
             font-size: 0.9rem;
         }
-        .control-group select, .time-range-buttons button { /* Style chung cho select và button */
+
+        .control-group select,
+        .time-range-buttons button {
+            /* Style chung cho select và button */
             padding: 0.6rem 1rem;
             border-radius: 0.25rem;
             border: 1px solid #ced4da;
             font-size: 0.95rem;
             background-color: #fff;
             color: #495057;
-            min-width: 180px; /* Độ rộng tối thiểu */
+            min-width: 180px;
+            /* Độ rộng tối thiểu */
         }
-         .control-group select {
-            min-width: 250px; /* Select có thể cần rộng hơn */
+
+        .control-group select {
+            min-width: 250px;
+            /* Select có thể cần rộng hơn */
         }
-        .control-group select:focus, .time-range-buttons button:focus {
+
+        .control-group select:focus,
+        .time-range-buttons button:focus {
             border-color: #80bdff;
             outline: 0;
-            box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, .25);
         }
-        .time-range-buttons { 
-            display: flex; 
-            gap: 0.5rem; 
-            flex-wrap: wrap; /* Cho phép button xuống hàng */
+
+        .time-range-buttons {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            /* Cho phép button xuống hàng */
         }
+
         .time-range-buttons button {
             cursor: pointer;
             transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out, border-color 0.2s ease-in-out;
-            min-width: auto; /* Cho phép button co dãn theo nội dung */
+            min-width: auto;
+            /* Cho phép button co dãn theo nội dung */
         }
-        .time-range-buttons button:hover { 
-            border-color: #0069d9; 
-            background-color: #e9ecef; /* Nền nhạt hơn khi hover */
+
+        .time-range-buttons button:hover {
+            border-color: #0069d9;
+            background-color: #e9ecef;
+            /* Nền nhạt hơn khi hover */
         }
+
         .time-range-buttons button.active {
-            background-color: #007bff; /* Blue primary */
+            background-color: #007bff;
+            /* Blue primary */
             color: white;
             border-color: #007bff;
             font-weight: 500;
         }
 
         /* --- Chart Styles (Tương đồng với realtime_dashboard.html nếu có chart) --- */
-        .chart-wrapper { /* Thêm một wrapper để chứa chart và message */
+        .chart-wrapper {
+            /* Thêm một wrapper để chứa chart và message */
             background-color: #ffffff;
             padding: 1.5rem;
             border-radius: 0.5rem;
-            box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
         }
-        .chart-container { /* Container cho canvas */
-            position: relative; 
-            height: 60vh; /* Chiều cao có thể điều chỉnh */
+
+        .chart-container {
+            /* Container cho canvas */
+            position: relative;
+            height: 60vh;
+            /* Chiều cao có thể điều chỉnh */
             width: 100%;
         }
-        .no-data-message { /* Style cho thông báo khi không có dữ liệu */
-            text-align: center; 
-            padding: 3rem; 
-            font-size: 1.1rem; 
+
+        .no-data-message {
+            /* Style cho thông báo khi không có dữ liệu */
+            text-align: center;
+            padding: 3rem;
+            font-size: 1.1rem;
             color: #6c757d;
             font-style: italic;
         }
-        footer { 
-            text-align: center; 
-            padding: 1rem; 
-            background-color: #343a40; /* Dark blue-gray */
-            color: #f8f9fa; /* Light gray text */
-            font-size: 0.9rem; 
-            margin-top: auto; /* Đẩy footer xuống cuối nếu content không đủ dài */
+
+        .forecast-button {
+            padding: 0.6rem 1rem;
+            border-radius: 0.25rem;
+            border: 1px solid #ced4da;
+            font-size: 0.95rem;
+            background-color: #28a745;
+            /* Green for forecast */
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+        }
+
+        .forecast-button:hover {
+            background-color: #218838;
+            border-color: #1e7e34;
+        }
+
+        footer {
+            text-align: center;
+            padding: 1rem;
+            background-color: #343a40;
+            /* Dark blue-gray */
+            color: #f8f9fa;
+            /* Light gray text */
+            font-size: 0.9rem;
+            margin-top: auto;
+            /* Đẩy footer xuống cuối nếu content không đủ dài */
         }
     </style>
 </head>
+
 <body>
     <div class="page-container">
         <header>
@@ -154,20 +226,25 @@
         </header>
         <nav>
             <a href="/">Real-time Dashboard</a>
-            <a href="/historical" class="active-nav">Historical Data</a> 
+            <a href="/historical" class="active-nav">Historical Data</a>
         </nav>
 
-        <main class="container"> 
+        <main class="container">
             <div class="controls-container">
+                <div class="control-group">
+                    <label>Forecast:</label>
+                    <button id="forecastButton" class="forecast-button">Generate Forecast</button>
+                </div>
                 <div class="control-group">
                     <label for="symbolTimeframeSelectorHist">Select Asset (Symbol_Timeframe):</label>
                     <select id="symbolTimeframeSelectorHist">
                         {% if available_symbols_timeframes %}
-                            {% for st in available_symbols_timeframes %}
-                                <option value="{{ st }}" {% if st == initial_symbol_timeframe %}selected{% endif %}>{{ st }}</option>
-                            {% endfor %}
+                        {% for st in available_symbols_timeframes %}
+                        <option value="{{ st }}" {% if st==initial_symbol_timeframe %}selected{% endif %}>{{ st }}
+                        </option>
+                        {% endfor %}
                         {% else %}
-                            <option value="" disabled>No symbols/timeframes found</option>
+                        <option value="" disabled>No symbols/timeframes found</option>
                         {% endif %}
                     </select>
                 </div>
@@ -189,161 +266,290 @@
                 </div>
                 <div id="chartMessage" class="no-data-message" style="display: none;"></div>
             </div>
+            <div class="chart-wrapper">
+                <div class="chart-container">
+                    <canvas id="forecastPriceChart"></canvas>
+                </div>
+                <div id="forecastMessage" class="no-data-message" style="display: none;"></div>
+            </div>
         </main>
     </div>
 
-<script>
-    const symbolTimeframeSelectorHist = document.getElementById('symbolTimeframeSelectorHist');
-    const historicalChartCanvas = document.getElementById('historicalPriceChart');
-    const historicalChartCtx = historicalChartCanvas.getContext('2d');
-    const rangeButtons = document.querySelectorAll('.range-button');
-    const chartMessageDiv = document.getElementById('chartMessage');
-    let historicalPriceChartInstance = null;
-    let currentSelectedRange = '1m';
+    <script>
+        const symbolTimeframeSelectorHist = document.getElementById('symbolTimeframeSelectorHist');
+        const historicalChartCanvas = document.getElementById('historicalPriceChart');
+        const historicalChartCtx = historicalChartCanvas.getContext('2d');
+        const rangeButtons = document.querySelectorAll('.range-button');
+        const chartMessageDiv = document.getElementById('chartMessage');
+        let historicalPriceChartInstance = null;
+        let currentSelectedRange = '1m';
 
-    function setActiveRangeButton(selectedRange) {
-        rangeButtons.forEach(button => {
-            button.classList.toggle('active', button.dataset.range === selectedRange);
-        });
-    }
-
-    function displayChartMessage(message) {
-        if (historicalPriceChartInstance) {
-            historicalPriceChartInstance.destroy();
-            historicalPriceChartInstance = null;
-        }
-        historicalChartCanvas.style.display = 'none'; // Ẩn canvas
-        chartMessageDiv.textContent = message;
-        chartMessageDiv.style.display = 'block'; // Hiện thông báo
-    }
-
-    function hideChartMessageShowCanvas() {
-        historicalChartCanvas.style.display = 'block'; // Hiện canvas
-        chartMessageDiv.style.display = 'none'; // Ẩn thông báo
-    }
-
-    async function fetchAndDrawHistoricalChart(symbolTimeframe, range = 'all') {
-        if (historicalPriceChartInstance) {
-            historicalPriceChartInstance.destroy();
-            historicalPriceChartInstance = null;
-        }
-        hideChartMessageShowCanvas(); // Mặc định là hiện canvas, ẩn message
-        currentSelectedRange = range;
-        setActiveRangeButton(range);
-
-        if (!symbolTimeframe) {
-            displayChartMessage("Please select an asset (symbol/timeframe).");
-            return;
+        function setActiveRangeButton(selectedRange) {
+            rangeButtons.forEach(button => {
+                button.classList.toggle('active', button.dataset.range === selectedRange);
+            });
         }
 
-        console.log(`Fetching historical data for ${symbolTimeframe} with range ${range}...`);
-        displayChartMessage(`Loading data for ${symbolTimeframe} (${range})...`);
-
-        try {
-            const apiUrl = `/api/historical_data/${symbolTimeframe}?range=${range}`;
-            const response = await fetch(apiUrl);
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(`HTTP error! Status: ${response.status}, Message: ${errorData.error || 'Unknown API error'}`);
+        function displayChartMessage(message) {
+            if (historicalPriceChartInstance) {
+                historicalPriceChartInstance.destroy();
+                historicalPriceChartInstance = null;
             }
-            const chartData = await response.json();
+            historicalChartCanvas.style.display = 'none'; // Ẩn canvas
+            chartMessageDiv.textContent = message;
+            chartMessageDiv.style.display = 'block'; // Hiện thông báo
+        }
 
-            if (!chartData.labels || !chartData.datasets) {
-                console.error("Historical data format is incorrect", chartData);
-                displayChartMessage("Received incorrect data format from API.");
+        function hideChartMessageShowCanvas() {
+            historicalChartCanvas.style.display = 'block'; // Hiện canvas
+            chartMessageDiv.style.display = 'none'; // Ẩn thông báo
+        }
+
+        async function fetchAndDrawHistoricalChart(symbolTimeframe, range = 'all') {
+            if (historicalPriceChartInstance) {
+                historicalPriceChartInstance.destroy();
+                historicalPriceChartInstance = null;
+            }
+            hideChartMessageShowCanvas(); // Mặc định là hiện canvas, ẩn message
+            currentSelectedRange = range;
+            setActiveRangeButton(range);
+
+            if (!symbolTimeframe) {
+                displayChartMessage("Please select an asset (symbol/timeframe).");
                 return;
             }
 
-            if (chartData.labels.length === 0) {
-                console.warn(`No data points for ${symbolTimeframe} in range: ${range}.`);
-                displayChartMessage(`No data available for ${symbolTimeframe} (${range})`);
-                return;
-            }
-            
-            hideChartMessageShowCanvas(); // Có dữ liệu, hiện canvas
+            console.log(`Fetching historical data for ${symbolTimeframe} with range ${range}...`);
+            displayChartMessage(`Loading data for ${symbolTimeframe} (${range})...`);
 
-            historicalPriceChartInstance = new Chart(historicalChartCtx, {
-                type: 'line',
-                data: {
-                    labels: chartData.labels,
-                    datasets: chartData.datasets
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false, },
-                    scales: {
-                        x: {
-                            type: 'time',
-                            time: {
-                                parser: 'YYYY-MM-DD HH:mm:ss',
-                                tooltipFormat: 'll HH:mm',
-                                displayFormats: {
-                                    millisecond: 'HH:mm:ss.SSS', second: 'HH:mm:ss', minute: 'HH:mm',
-                                    hour: 'MMM D, HH:mm', day: 'MMM D, YYYY', week: 'll',
-                                    month: 'MMM YYYY', quarter: '[Q]Q - YYYY', year: 'YYYY'
-                                }
-                            },
-                            title: { display: true, text: 'Time (UTC)' },
-                            grid: { display: false }
-                        },
-                        y: {
-                            beginAtZero: false,
-                            title: { display: true, text: 'Price (USDT)' },
-                            grid: { color: 'rgba(200, 200, 200, 0.2)'}
-                        }
+            try {
+                const apiUrl = `/api/historical_data/${symbolTimeframe}?range=${range}`;
+                const response = await fetch(apiUrl);
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(`HTTP error! Status: ${response.status}, Message: ${errorData.error || 'Unknown API error'}`);
+                }
+                const chartData = await response.json();
+
+                if (!chartData.labels || !chartData.datasets) {
+                    console.error("Historical data format is incorrect", chartData);
+                    displayChartMessage("Received incorrect data format from API.");
+                    return;
+                }
+
+                if (chartData.labels.length === 0) {
+                    console.warn(`No data points for ${symbolTimeframe} in range: ${range}.`);
+                    displayChartMessage(`No data available for ${symbolTimeframe} (${range})`);
+                    return;
+                }
+
+                hideChartMessageShowCanvas(); // Có dữ liệu, hiện canvas
+
+                historicalPriceChartInstance = new Chart(historicalChartCtx, {
+                    type: 'line',
+                    data: {
+                        labels: chartData.labels,
+                        datasets: chartData.datasets
                     },
-                    plugins: {
-                        tooltip: {
-                            mode: 'index', intersect: false,
-                            callbacks: {
-                                title: function(tooltipItems) {
-                                    if (tooltipItems.length > 0 && tooltipItems[0].parsed) { // Check for parsed
-                                        const date = moment(tooltipItems[0].parsed.x);
-                                        return date.format('MMM D, YYYY HH:mm:ss');
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false, },
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    parser: 'YYYY-MM-DD HH:mm:ss',
+                                    tooltipFormat: 'll HH:mm',
+                                    displayFormats: {
+                                        millisecond: 'HH:mm:ss.SSS', second: 'HH:mm:ss', minute: 'HH:mm',
+                                        hour: 'MMM D, HH:mm', day: 'MMM D, YYYY', week: 'll',
+                                        month: 'MMM YYYY', quarter: '[Q]Q - YYYY', year: 'YYYY'
                                     }
-                                    return '';
-                                }
+                                },
+                                title: { display: true, text: 'Time (UTC)' },
+                                grid: { display: false }
+                            },
+                            y: {
+                                beginAtZero: false,
+                                title: { display: true, text: 'Price (USDT)' },
+                                grid: { color: 'rgba(200, 200, 200, 0.2)' }
                             }
                         },
-                        legend: { position: 'top', labels: { usePointStyle: true, padding: 20 }},
-                        zoom: {
-                            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
-                            pan: { enabled: true, mode: 'x' },
-                            limits: { x: {min: 'original', max: 'original', minRange: 1000 * 60 * 60 } }
+                        plugins: {
+                            tooltip: {
+                                mode: 'index', intersect: false,
+                                callbacks: {
+                                    title: function (tooltipItems) {
+                                        if (tooltipItems.length > 0 && tooltipItems[0].parsed) { // Check for parsed
+                                            const date = moment(tooltipItems[0].parsed.x);
+                                            return date.format('MMM D, YYYY HH:mm:ss');
+                                        }
+                                        return '';
+                                    }
+                                }
+                            },
+                            legend: { position: 'top', labels: { usePointStyle: true, padding: 20 } },
+                            zoom: {
+                                zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+                                pan: { enabled: true, mode: 'x' },
+                                limits: { x: { min: 'original', max: 'original', minRange: 1000 * 60 * 60 } }
+                            }
                         }
                     }
-                }
-            });
-        } catch (error) {
-            console.error('Error fetching or drawing historical chart:', error);
-            displayChartMessage(`Error loading chart: ${error.message}`);
+                });
+            } catch (error) {
+                console.error('Error fetching or drawing historical chart:', error);
+                displayChartMessage(`Error loading chart: ${error.message}`);
+            }
         }
-    }
 
-    symbolTimeframeSelectorHist.addEventListener('change', (event) => {
-        fetchAndDrawHistoricalChart(event.target.value, currentSelectedRange);
-    });
-
-    rangeButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            const selectedRange = button.dataset.range;
-            const currentSymbolTimeframe = symbolTimeframeSelectorHist.value;
-            fetchAndDrawHistoricalChart(currentSymbolTimeframe, selectedRange);
+        symbolTimeframeSelectorHist.addEventListener('change', (event) => {
+            fetchAndDrawHistoricalChart(event.target.value, currentSelectedRange);
         });
-    });
 
-    document.addEventListener('DOMContentLoaded', () => {
-        setActiveRangeButton(currentSelectedRange);
-        const initialSymbolTimeframe = symbolTimeframeSelectorHist.value;
-        if (initialSymbolTimeframe) {
-            fetchAndDrawHistoricalChart(initialSymbolTimeframe, currentSelectedRange);
-        } else {
-            displayChartMessage("No assets available. Please ensure data sources are active and select an asset.");
+        rangeButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const selectedRange = button.dataset.range;
+                const currentSymbolTimeframe = symbolTimeframeSelectorHist.value;
+                fetchAndDrawHistoricalChart(currentSymbolTimeframe, selectedRange);
+            });
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setActiveRangeButton(currentSelectedRange);
+            const initialSymbolTimeframe = symbolTimeframeSelectorHist.value;
+            if (initialSymbolTimeframe) {
+                fetchAndDrawHistoricalChart(initialSymbolTimeframe, currentSelectedRange);
+            } else {
+                displayChartMessage("No assets available. Please ensure data sources are active and select an asset.");
+            }
+        });
+        const forecastButton = document.getElementById('forecastButton');
+        const forecastChartCanvas = document.getElementById('forecastPriceChart');
+        const forecastChartCtx = forecastChartCanvas.getContext('2d');
+        const forecastMessageDiv = document.getElementById('forecastMessage');
+        let forecastPriceChartInstance = null;
+
+        function displayForecastMessage(message) {
+            if (forecastPriceChartInstance) {
+                forecastPriceChartInstance.destroy();
+                forecastPriceChartInstance = null;
+            }
+            forecastChartCanvas.style.display = 'none';
+            forecastMessageDiv.textContent = message;
+            forecastMessageDiv.style.display = 'block';
         }
-    });
-</script>
+
+        function hideForecastMessageShowCanvas() {
+            forecastChartCanvas.style.display = 'block';
+            forecastMessageDiv.style.display = 'none';
+        }
+
+        async function fetchAndDrawForecastChart(symbolTimeframe) {
+            if (!symbolTimeframe) {
+                displayForecastMessage("Please select an asset (symbol/timeframe).");
+                return;
+            }
+
+            console.log(`Fetching forecast data for ${symbolTimeframe}...`);
+            displayForecastMessage(`Loading forecast for ${symbolTimeframe}...`);
+
+            try {
+                const response = await fetch(`/api/forecast/${symbolTimeframe}`);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(`HTTP error! Status: ${response.status}, Message: ${errorData.error || 'Unknown API error'}`);
+                }
+                const forecastData = await response.json();
+
+                if (forecastData.error) {
+                    displayForecastMessage(forecastData.error);
+                    return;
+                }
+
+                if (!forecastData.labels || !forecastData.predictions || forecastData.predictions.length === 0) {
+                    displayForecastMessage(`No forecast data available for ${symbolTimeframe}`);
+                    return;
+                }
+
+                hideForecastMessageShowCanvas();
+
+                // Assuming predictions are for the last sequence in the test set
+                const forecastValues = forecastData.predictions[forecastData.predictions.length - 1]; // Take last sequence
+                const dataset = {
+                    label: `${symbolTimeframe} Forecast`,
+                    data: forecastValues,
+                    borderColor: 'rgb(255, 99, 132)', // Pink for forecast
+                    tension: 0.1,
+                    fill: false
+                };
+
+                if (forecastPriceChartInstance) {
+                    forecastPriceChartInstance.destroy();
+                }
+
+                forecastPriceChartInstance = new Chart(forecastChartCtx, {
+                    type: 'line',
+                    data: {
+                        labels: forecastData.labels,
+                        datasets: [dataset]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    parser: 'YYYY-MM-DD HH:mm:ss',
+                                    tooltipFormat: 'll HH:mm',
+                                    displayFormats: {
+                                        minute: 'HH:mm',
+                                        hour: 'MMM D, HH:mm',
+                                        day: 'MMM D, YYYY'
+                                    }
+                                },
+                                title: { display: true, text: 'Time (UTC)' },
+                                grid: { display: false }
+                            },
+                            y: {
+                                beginAtZero: false,
+                                title: { display: true, text: 'Predicted Price (USDT)' },
+                                grid: { color: 'rgba(200, 200, 200, 0.2)' }
+                            }
+                        },
+                        plugins: {
+                            tooltip: { mode: 'index', intersect: false },
+                            legend: { position: 'top', labels: { usePointStyle: true, padding: 20 } }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error fetching or drawing forecast chart:', error);
+                displayForecastMessage(`Error loading forecast: ${error.message}`);
+            }
+        }
+
+        forecastButton.addEventListener('click', () => {
+            const currentSymbolTimeframe = symbolTimeframeSelectorHist.value;
+            fetchAndDrawForecastChart(currentSymbolTimeframe);
+        });
+
+        // Update existing DOMContentLoaded to ensure forecast canvas is hidden initially
+        document.addEventListener('DOMContentLoaded', () => {
+            setActiveRangeButton(currentSelectedRange);
+            const initialSymbolTimeframe = symbolTimeframeSelectorHist.value;
+            if (initialSymbolTimeframe) {
+                fetchAndDrawHistoricalChart(initialSymbolTimeframe, currentSelectedRange);
+            } else {
+                displayChartMessage("No assets available. Please ensure data sources are active and select an asset.");
+                displayForecastMessage("Select an asset to generate a forecast.");
+            }
+        });
+    </script>
 
 </body>
+
 </html>

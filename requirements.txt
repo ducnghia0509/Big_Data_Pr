@@ -52,7 +52,6 @@ opt_einsum==3.4.0
 packaging==25.0
 pandas==2.0.3
 pillow==10.4.0
-pkg_resources==0.0.0
 propcache==0.2.0
 prophet==1.1.6
 protobuf==4.25.7
