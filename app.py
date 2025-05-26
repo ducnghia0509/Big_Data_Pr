@@ -36,7 +36,7 @@ try:
     if ES_HOST and ES_PORT:
         es_client = Elasticsearch(
             [{'host': ES_HOST, 'port': ES_PORT, 'scheme': 'http'}],
-            request_timeout=10, max_retries=2, retry_on_timeout=True
+            request_timeout=30, max_retries=2, retry_on_timeout=True
         )
         if not es_client.ping():
             raise ConnectionError("Failed to connect to Elasticsearch")
