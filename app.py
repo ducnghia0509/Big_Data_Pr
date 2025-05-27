@@ -26,7 +26,7 @@ ES_HOST = os.getenv("ELASTICSEARCH_HOST", "localhost")
 ES_PORT = int(os.getenv("ELASTICSEARCH_PORT", 9200))
 ES_HISTORICAL_INDEX = "crypto_historical_data"
 # ES_OHLCV_LATEST_INDEX = "crypto_ohlcv_1m_latest"    # For latest 1m OHLCV candle
-ES_OHLCV_LATEST_INDEX = "crypto-ohlcv"
+ES_OHLCV_LATEST_INDEX = "crypto_ohlcv_1m_latest"
 ES_OHLCV_STATS_INDEX = "crypto_ohlcv_1m_stats"     # For windowed stats from 1m OHLCV
 ES_CHART_1M_INDEX_FROM_SPARK = "crypto_ohlcv_1m_chartdata" # For raw 1m OHLCV for chart
 ES_CHART_1M_INDEX_PATTERN_FOR_QUERY = "crypto_ohlcv_1m_chartdata-*"
@@ -108,10 +108,13 @@ def realtime_page():
 
 @app.route('/api/realtime_stats/<encoded_symbol_str>')
 def api_realtime_stats(encoded_symbol_str):
-    symbol_str = encoded_symbol_str.replace('-', '/')
+    symbol_str = encoded_symbol_str
+    # symbol_str = encoded_symbol_str.replace('-', '/')
     latest_data, stats_data = {}, {}
     try:
-        doc = es_client.get(index=ES_OHLCV_LATEST_INDEX, id=symbol_str)
+        # doc = es_client.get(index=ES_OHLCV_LATEST_INDEX, id=symbol_str)
+        doc = es_client.get(index=ES_OHLCV_LATEST_INDEX,
+                            id=symbol_str)
         latest_data = doc.get('_source', {})
     except NotFoundError:
         print(f"No latest OHLCV 1m data for {symbol_str} in {ES_OHLCV_LATEST_INDEX}")
@@ -130,7 +133,7 @@ def api_realtime_stats(encoded_symbol_str):
 
 @app.route('/api/chart_data_1m/<encoded_symbol_str>')
 def api_chart_data_1m(encoded_symbol_str):
-    symbol_str = encoded_symbol_str.replace('-', '/')
+    symbol_str = encoded_symbol_str.replace('_', '/').replace('-', '/')
     now_utc = datetime.now(timezone.utc)
     time_35_minutes_ago_ms = int((now_utc - timedelta(minutes=35)).timestamp() * 1000)
 
@@ -151,23 +154,30 @@ def api_chart_data_1m(encoded_symbol_str):
                 ]
             }
         },
-        "sort": [{"@timestamp": "asc"}] # Lấy theo thứ tự thời gian tăng dần 
+        "sort": [{"@timestamp": "asc"}]
     }
+
     try:
         res = es_client.search(index=ES_CHART_1M_INDEX_PATTERN_FOR_QUERY, body=query_body, ignore_unavailable=True)
         hits = res['hits']['hits']
         chart_points = []
+
         for hit in hits:
             source = hit['_source']
             ts_ms = source.get('timestamp_ms')
-            if ts_ms is None and '@timestamp' in source:
-                try:
-                    ts_ms = int(datetime.fromisoformat(source['@timestamp'].replace('Z', '+00:00')).timestamp() * 1000)
-                except ValueError: continue
+            if ts_ms is None:
+                if isinstance(source.get('@timestamp'), (int, float)):
+                    ts_ms = source['@timestamp']
+                elif isinstance(source.get('@timestamp'), str):
+                    try:
+                        ts_ms = int(datetime.fromisoformat(source['@timestamp'].replace('Z', '+00:00')).timestamp() * 1000)
+                    except ValueError:
+                        continue
 
             if ts_ms is not None and 'close' in source:
-                chart_points.append([ts_ms, source.get('close')])
-        return jsonify(chart_points) # Trả về tất cả điểm trong 35 phút qua
+                chart_points.append([ts_ms, source['close']])
+
+        return jsonify(chart_points)
 
     except NotFoundError:
         print(f"No chart data indices found matching {ES_CHART_1M_INDEX_PATTERN_FOR_QUERY} for {symbol_str}")
@@ -175,6 +185,7 @@ def api_chart_data_1m(encoded_symbol_str):
     except Exception as e:
         print(f"Error fetching 1m chart data for {symbol_str}: {e}")
         return jsonify({"error": str(e)}), 500
+    print(f"[DEBUG] symbol: {symbol_str} | points returned: {len(chart_points)}")
 
 # --- Historical Data Routes ---
 @app.route('/historical')
