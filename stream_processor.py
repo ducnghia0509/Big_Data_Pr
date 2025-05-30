@@ -1,267 +1,178 @@
-#!/usr/bin/env python3
-"""
-Stream Processor – consume 1‑minute OHLCV candles from Kafka, build three data
-streams and write them to Elasticsearch:
-  1.  latest 1‑minute candle per symbol           → index crypto_ohlcv_1m_latest
-  2.  sliding‑window stats (avg / min / max)     → index crypto_ohlcv_1m_stats
-  3.  raw 1‑minute candles for charting          → daily index crypto_ohlcv_1m_chartdata‑YYYY‑MM‑DD
-
-The script is self‑contained: adjust the environment variables below or export
-at runtime, then run:
-    $ python stream_processor.py
-
-Requirements:
-  • Spark 3.4.x + PySpark 3.4.x
-  • Kafka broker reachable on KAFKA_BROKER
-  • Elasticsearch 8.x reachable on ELASTICSEARCH_HOST:ELASTICSEARCH_PORT
-"""
-from __future__ import annotations
-
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import from_json, col, expr, window, avg, min, max, lit
+from pyspark.sql.types import StructType, StructField, StringType, LongType, DoubleType, TimestampType
 import os
-from datetime import datetime, timezone
+from pyspark.sql import functions as F
 
-from pyspark.sql import SparkSession, functions as F
-from pyspark.sql.functions import (
-    avg, col, expr, from_json, max as spark_max, min as spark_min, window
-)
-from pyspark.sql.types import (
-    DoubleType, LongType, StringType, StructField, StructType, TimestampType,
-)
+from datetime import datetime, date, time, timedelta, timezone
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Configuration (env vars have priority – values below are sane defaults)
-# ──────────────────────────────────────────────────────────────────────────────
-KAFKA_BROKER               = os.getenv("KAFKA_BROKER", "localhost:9092")
-KAFKA_TOPIC                = os.getenv("KAFKA_OHLCV_1M_TOPIC", "crypto_ohlcv_1m")
+# --- Configuration ---
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
+KAFKA_OHLCV_1M_TOPIC = "crypto_ohlcv_1m"
+ELASTICSEARCH_HOST = os.getenv("ELASTICSEARCH_HOST", "192.168.30.128")
+ELASTICSEARCH_PORT = os.getenv("ELASTICSEARCH_PORT", "9200")
 
-ELASTICSEARCH_HOST         = os.getenv("ELASTICSEARCH_HOST", "localhost")
-ELASTICSEARCH_PORT         = os.getenv("ELASTICSEARCH_PORT", "9200")
-ES_NODES_WAN_ONLY          = os.getenv("ES_NODES_WAN_ONLY", "true")  # safe for Docker
+ELASTICSEARCH_OHLCV_STATS_INDEX = "crypto_ohlcv_1m_stats" 
+ELASTICSEARCH_OHLCV_LATEST_INDEX = "crypto_ohlcv_1m_latest"
+ELASTICSEARCH_CHART_1M_INDEX = "crypto_ohlcv_1m_chartdata"
+ELASTICSEARCH_NODE_WAN_ONLY = os.getenv("ES_NODES_WAN_ONLY", "false")
 
-ES_IDX_LATEST              = os.getenv("ES_IDX_LATEST", "crypto_ohlcv_1m_latest")
-ES_IDX_STATS               = os.getenv("ES_IDX_STATS",  "crypto_ohlcv_1m_stats")
-ES_IDX_CHART_PREFIX        = os.getenv("ES_IDX_CHART_PREFIX", "crypto_ohlcv_1m_chartdata")
+CHECKPOINT_BASE_PATH = f"hdfs://localhost:9000/user/{os.environ.get('USER', 'hadoop')}/crypto_project/checkpoint/stream_ohlcv_1m_processor"
+WINDOW_DURATION_FOR_STATS = os.getenv("OHLCV_WINDOW_DURATION", "10 minutes") 
+SLIDE_DURATION_FOR_STATS = os.getenv("OHLCV_SLIDE_DURATION", "1 minute")   
 
-WINDOW_DURATION            = os.getenv("OHLCV_WINDOW_DURATION", "10 minutes")  # stats window
-SLIDE_DURATION             = os.getenv("OHLCV_SLIDE_DURATION",  "1 minute")     # slide step
-
-# Local checkpoint directory (can be HDFS/S3)
-CHECKPOINT_DIR_BASE        = os.getenv(
-    "CHECKPOINT_BASE_PATH",
-    "file:///tmp/crypto_ohlcv_1m_processor_checkpoint",
-)
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Schema – the JSON payload produced by streaming_producer.py
-# ──────────────────────────────────────────────────────────────────────────────
-OHLCV_SCHEMA = StructType([
-    StructField("timestamp",   LongType(),   True),  # ms epoch (candle open time)
-    StructField("symbol",      StringType(), True),
-    StructField("timeframe",   StringType(), True),
-    StructField("open",        DoubleType(), True),
-    StructField("high",        DoubleType(), True),
-    StructField("low",         DoubleType(), True),
-    StructField("close",       DoubleType(), True),
-    StructField("volume",      DoubleType(), True),
-    StructField("datetime_str",StringType(), True),  # ISO string (optional)
+# --- Schema cho dữ liệu OHLCV 1 phút từ Kafka ---
+kafka_ohlcv_1m_schema = StructType([
+    StructField("timestamp", LongType(), True), 
+    StructField("symbol", StringType(), True),
+    StructField("timeframe", StringType(), True), 
+    StructField("open", DoubleType(), True),
+    StructField("high", DoubleType(), True),
+    StructField("low", DoubleType(), True),
+    StructField("close", DoubleType(), True),
+    StructField("volume", DoubleType(), True), 
+    StructField("datetime_str", StringType(), True) # ISO datetime string
 ])
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Spark Session
-# ──────────────────────────────────────────────────────────────────────────────
-print("\n▶️  Initialising Spark session …")
-SPARK_KAFKA_PKG = "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.4"
-ES_SPARK_PKG    = "org.elasticsearch:elasticsearch-spark-30_2.12:8.13.4"
+# --- Khởi tạo Spark Session ---
+spark_kafka_pkg = "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1"
+es_spark_pkg = "org.elasticsearch:elasticsearch-spark-30_2.12:8.13.4"
 
-spark = (
-    SparkSession.builder
-    .appName("CryptoOHLCV1mProcessing")
-    .config("spark.jars.packages", f"{SPARK_KAFKA_PKG},{ES_SPARK_PKG}")
-    .config("spark.sql.session.timeZone", "UTC")
-    # Elasticsearch‑Hadoop connector settings
-    .config("spark.es.nodes",            ELASTICSEARCH_HOST)
-    .config("spark.es.port",             ELASTICSEARCH_PORT)
-    .config("spark.es.nodes.wan.only",   ES_NODES_WAN_ONLY)
-    .config("spark.es.nodes.discovery",  "false")
-    .config("spark.es.net.ssl",          "false")
-    .config("spark.elasticsearch.index.auto.create", "true")
+print("Khởi tạo Spark Session cho OHLCV 1m Processing...")
+spark = SparkSession.builder \
+    .appName("CryptoOHLCV1mProcessing") \
+    .config("spark.jars.packages", f"{spark_kafka_pkg},{es_spark_pkg}") \
+    .config("spark.sql.session.timeZone", "UTC") \
+    .config("spark.elasticsearch.index.auto.create", "true") \
+    .config("spark.es.nodes.wan.only", ELASTICSEARCH_NODE_WAN_ONLY) \
+    .config("spark.es.nodes.discovery", "false") \
+    .config("spark.es.net.ssl", "false") \
     .getOrCreate()
-)
-print("✅  Spark session created.\n")
+print("Spark Session đã được tạo.")
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Read Kafka stream → structured dataframe
-# ──────────────────────────────────────────────────────────────────────────────
-print(f"➡️  Subscribing to Kafka topic '{KAFKA_TOPIC}' @ {KAFKA_BROKER}")
-raw_df = (
-    spark.readStream
-    .format("kafka")
-    .option("kafka.bootstrap.servers", KAFKA_BROKER)
-    .option("subscribe", KAFKA_TOPIC)
-    .option("startingOffsets", "latest")
-    .option("failOnDataLoss", "false")
+# --- Đọc dữ liệu OHLCV 1 phút từ Kafka ---
+print(f"Đọc dữ liệu OHLCV 1m từ Kafka topic: {KAFKA_OHLCV_1M_TOPIC}")
+kafka_ohlcv_1m_df = spark.readStream \
+    .format("kafka") \
+    .option("kafka.bootstrap.servers", KAFKA_BROKER) \
+    .option("subscribe", KAFKA_OHLCV_1M_TOPIC) \
+    .option("startingOffsets", "latest") \
+    .option("failOnDataLoss", "false") \
     .load()
-)
 
-parsed_df = (
-    raw_df.selectExpr("CAST(value AS STRING)")
-    .select(from_json(col("value"), OHLCV_SCHEMA).alias("data"))
+parsed_ohlcv_df = kafka_ohlcv_1m_df.selectExpr("CAST(value AS STRING)") \
+    .select(from_json(col("value"), kafka_ohlcv_1m_schema).alias("data")) \
     .select(
-        # normalise symbol: keep original with '/'; we replace later before writing
-        col("data.symbol"),
-        (col("data.timestamp") / 1000).cast(TimestampType()).alias("event_ts"),
-        col("data.timestamp").alias("ts_ms"),
-        col("data.open"), col("data.high"), col("data.low"),
-        col("data.close").alias("close"),
-        col("data.volume"),
+        col("data.symbol").alias("symbol"),
+        (col("data.timestamp") / 1000).cast(TimestampType()).alias("event_timestamp"), 
+        col("data.timestamp").alias("timestamp_ms"), 
+        col("data.open").alias("open"),
+        col("data.high").alias("high"),
+        col("data.low").alias("low"),
+        col("data.close").alias("close_price"),
+        col("data.volume").alias("volume")
     )
-)
 
-# Watermark (allow 2‑minute lateness)
-watermarked = parsed_df.withWatermark("event_ts", "2 minutes")
+# --- Watermark ---
+watermarked_ohlcv_df = parsed_ohlcv_df.withWatermark("event_timestamp", "2 minutes")
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 1️⃣  Latest candle per symbol – complete mode, small dimension table
-# ──────────────────────────────────────────────────────────────────────────────
-latest_df = (
-    watermarked.groupBy("symbol")
+# --- 1. Dữ liệu cho Chart (Nến 1 phút gần nhất) và Latest Price/Volume ---
+latest_ohlcv_candle_df = watermarked_ohlcv_df \
+    .groupBy("symbol") \
     .agg(
-        spark_max("event_ts").alias("latest_ts"),
-        F.last("close").alias("current_price"),
-        F.last("volume").alias("current_volume"),
-        F.last("ts_ms").alias("ts_ms"),
+        F.max("event_timestamp").alias("latest_event_timestamp"), 
+        F.last("close_price").alias("current_price"),      
+        F.last("volume").alias("current_volume"),         
+        F.last("timestamp_ms").alias("timestamp_ms"),      
         F.last("open").alias("open"),
         F.last("high").alias("high"),
-        F.last("low").alias("low"),
-    )
-)
-
-def write_latest(batch_df, epoch_id):
-    if batch_df.rdd.isEmpty():
-        return
-
-    out = (
-        batch_df
-        .withColumn("symbol", col("symbol"))
-        .withColumn("doc_id", col("symbol"))
-        .select(
-            "doc_id", "symbol", "latest_ts", "current_price", "current_volume",
-            "open", "high", "low", "ts_ms",
-        )
+        F.last("low").alias("low")
     )
 
-    print(f"Epoch {epoch_id} – latest → ES ({out.count()} docs)")
-    (out.write
-        .format("org.elasticsearch.spark.sql")
-        .option("es.resource", ES_IDX_LATEST)
-        .option("es.mapping.id", "doc_id")
-        .option("es.write.operation", "index")
-        .mode("append")
-        .save()
-    )
+def write_latest_ohlcv_to_es(df, epoch_id):
+    if df.rdd.isEmpty(): return
+    # doc_id là symbol để dễ dàng get bằng ID
+    df_to_write = df.withColumn("doc_id", col("symbol")) \
+                    .select(
+                        "doc_id", "symbol", "latest_event_timestamp", "current_price", "current_volume",
+                        "open", "high", "low", "timestamp_ms" 
+                    )
+    print(f"Epoch {epoch_id} (Latest OHLCV 1m): Ghi {df_to_write.count()} nến mới nhất vào ES: {ELASTICSEARCH_OHLCV_LATEST_INDEX}")
+    df_to_write.write.format("org.elasticsearch.spark.sql") \
+        .option("es.resource", ELASTICSEARCH_OHLCV_LATEST_INDEX) \
+        .option("es.mapping.id", "doc_id").option("es.write.operation", "index") \
+        .option("es.nodes", ELASTICSEARCH_HOST).option("es.port", ELASTICSEARCH_PORT) \
+        .mode("append").save() 
 
-latest_q = (
-    latest_df.writeStream
-    .outputMode("complete")
-    .foreachBatch(write_latest)
-    .option("checkpointLocation", f"{CHECKPOINT_DIR_BASE}_latest")
-    .trigger(processingTime="15 seconds")
-    .start()
-)
+query_latest_ohlcv_es = latest_ohlcv_candle_df.writeStream \
+    .outputMode("complete") \
+    .foreachBatch(write_latest_ohlcv_to_es) \
+    .option("checkpointLocation", CHECKPOINT_BASE_PATH + "_latest_ohlcv") \
+    .trigger(processingTime="15 seconds").start() 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 2️⃣  Sliding‑window stats (avg / min / max)
-# ──────────────────────────────────────────────────────────────────────────────
-stats_df = (
-    watermarked.groupBy(
+# --- 2. Dữ liệu cho các thẻ thống kê (Avg, Min, Max Price Window) ---
+ohlcv_stats_df = watermarked_ohlcv_df \
+    .groupBy(
         col("symbol"),
-        window(col("event_ts"), WINDOW_DURATION, SLIDE_DURATION).alias("w"),
-    )
+        window(col("event_timestamp"), WINDOW_DURATION_FOR_STATS, SLIDE_DURATION_FOR_STATS).alias("time_window")
+    ) \
     .agg(
-        avg("close").alias("avg_price"),
-        spark_min("close").alias("min_price"),
-        spark_max("close").alias("max_price"),
-        F.count("close").alias("events"),
-    )
+        avg("close_price").alias("avg_price"),
+        min("close_price").alias("min_price"),
+        max("close_price").alias("max_price"),
+        F.count("close_price").alias("event_count_in_window") 
+    ) \
     .select(
         col("symbol"),
-        col("w.start").alias("window_start"),
-        col("w.end").alias("window_end"),
-        "avg_price", "min_price", "max_price", "events",
-    )
-)
-
-def write_stats(batch_df, epoch_id):
-    if batch_df.rdd.isEmpty():
-        return
-    out = (
-        batch_df
-        .withColumn("symbol", F.regexp_replace("symbol", "/", "-"))
-        .withColumn("doc_id", expr("concat(symbol,'_stats_',cast(window_end as long))"))
-    )
-    print(f"Epoch {epoch_id} – stats → ES ({out.count()} docs)")
-    (out.write.format("org.elasticsearch.spark.sql")
-        .option("es.resource", ES_IDX_STATS)
-        .option("es.mapping.id", "doc_id")
-        .option("es.write.operation", "index")
-        .mode("append")
-        .save()
+        col("time_window.start").alias("window_start"),
+        col("time_window.end").alias("window_end"),
+        "avg_price", "min_price", "max_price", "event_count_in_window"
     )
 
-stats_q = (
-    stats_df.writeStream
-    .outputMode("update")
-    .foreachBatch(write_stats)
-    .option("checkpointLocation", f"{CHECKPOINT_DIR_BASE}_stats")
-    .trigger(processingTime="1 minute")
-    .start()
-)
+def write_ohlcv_stats_to_es(df, epoch_id):
+    if df.rdd.isEmpty(): return
+    df_to_write = df.withColumn("doc_id", expr("concat(replace(symbol, '/', '-'), '_stats_', cast(window_end as long))"))
+    print(f"Epoch {epoch_id} (OHLCV 1m Stats): Ghi {df_to_write.count()} thống kê cửa sổ vào ES: {ELASTICSEARCH_OHLCV_STATS_INDEX}")
+    df_to_write.write.format("org.elasticsearch.spark.sql") \
+        .option("es.resource", ELASTICSEARCH_OHLCV_STATS_INDEX) \
+        .option("es.mapping.id", "doc_id").option("es.write.operation", "index") \
+        .option("es.nodes", ELASTICSEARCH_HOST).option("es.port", ELASTICSEARCH_PORT) \
+        .mode("append").save()
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 3️⃣  Raw 1‑minute candles for intraday chart (append‑only)
-# ──────────────────────────────────────────────────────────────────────────────
+query_ohlcv_stats_es = ohlcv_stats_df.writeStream \
+    .outputMode("update") \
+    .foreachBatch(write_ohlcv_stats_to_es) \
+    .option("checkpointLocation", CHECKPOINT_BASE_PATH + "_ohlcv_stats") \
+    .trigger(processingTime="1 minute").start() 
 
-def write_chart(batch_df, epoch_id):
-    if batch_df.rdd.isEmpty():
-        return
+# --- 3. Dữ liệu thô OHLCV 1 phút cho biểu đồ (ghi liên tục) ---
+def write_raw_ohlcv_for_chart_to_es(df, epoch_id):
+    if df.rdd.isEmpty(): return
+    df_with_es_timestamp = df.withColumnRenamed("event_timestamp", "@timestamp")
 
-    out = (
-        batch_df
-        .withColumnRenamed("event_ts", "@timestamp")
-        .withColumn("symbol", F.regexp_replace("symbol", "/", "-"))
-        .withColumn("doc_id", expr("concat(symbol,'_1m_',cast(ts_ms as string))"))
-        .select(
-            "doc_id", "symbol", "@timestamp", "ts_ms",
-            "open", "high", "low", col("close").alias("close"), "volume",
-        )
+    # Lấy ngày hiện tại để tạo tên index động
+    current_date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    target_index_name = f"{ELASTICSEARCH_CHART_1M_INDEX}-{current_date_str}"
+    df_to_write = df_with_es_timestamp.withColumn("doc_id",
+        expr("concat(replace(symbol, '/', '-'), '_1m_', cast(timestamp_ms as string))")
     )
-
-    today_idx = f"{ES_IDX_CHART_PREFIX}-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
-    print(f"Epoch {epoch_id} – chart → ES ({out.count()} docs) → {today_idx}")
-    (out.write.format("org.elasticsearch.spark.sql")
-        .option("es.resource", today_idx)
-        .option("es.mapping.id", "doc_id")
-        .option("es.write.operation", "index")
-        .mode("append")
-        .save()
+    df_to_write = df_to_write.select(
+        "doc_id", "symbol", "@timestamp", "timestamp_ms", 
+        col("open"), col("high"), col("low"), col("close_price").alias("close"),
+        col("volume")
     )
+    print(f"Epoch {epoch_id} (Raw OHLCV 1m for Chart): Ghi {df_to_write.count()} nến vào ES: {target_index_name}")
+    df_to_write.write.format("org.elasticsearch.spark.sql") \
+        .option("es.resource", target_index_name) \
+        .option("es.mapping.id", "doc_id").option("es.write.operation", "index") \
+        .option("es.nodes", ELASTICSEARCH_HOST).option("es.port", ELASTICSEARCH_PORT) \
+        .mode("append").save()
 
-chart_q = (
-    parsed_df.writeStream
-    .outputMode("append")
-    .foreachBatch(write_chart)
-    .option("checkpointLocation", f"{CHECKPOINT_DIR_BASE}_chart")
-    .trigger(processingTime="10 seconds")
-    .start()
-)
+query_raw_ohlcv_for_chart_es = parsed_ohlcv_df.writeStream \
+    .outputMode("append") \
+    .foreachBatch(write_raw_ohlcv_for_chart_to_es) \
+    .option("checkpointLocation", CHECKPOINT_BASE_PATH + "_raw_ohlcv_chart") \
+    .trigger(processingTime="15 seconds").start()
 
-print("🚀  All streaming queries started. Press Ctrl+C to stop.\n")
-
-try:
-    spark.streams.awaitAnyTermination()
-except KeyboardInterrupt:
-    print("⏹️  Stopping queries …")
-    for q in spark.streams.active:
-        q.stop()
-    spark.stop()
-    print("✅  Stopped.")
+print("Tất cả các streaming queries OHLCV 1m đã bắt đầu. Nhấn Ctrl+C để dừng.")
+spark.streams.awaitAnyTermination()

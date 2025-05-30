@@ -14,13 +14,13 @@ load_dotenv()
 SYMBOLS_STR = os.getenv('CRYPTO_SYMBOLS', 'BTC/USDT,ETH/USDT')
 SYMBOLS = [s.strip() for s in SYMBOLS_STR.split(',')]
 TIMEFRAME = os.getenv('CRYPTO_TIMEFRAME', '1h')
-EXCHANGE_ID = os.getenv('CRYPTO_EXCHANGE', 'binance')
+EXCHANGE_ID = os.getenv('CRYPTO_EXCHANGE', 'binance') 
 START_DATE_STR = os.getenv('CRYPTO_START_DATE')
 END_DATE_STR = os.getenv('CRYPTO_END_DATE') 
 
 LOCAL_SAVE_PATH = './temp_crypto_data'
 HDFS_USER = os.environ.get("USER", "hadoop") 
-HDFS_TARGET_PATH = f'/user/{HDFS_USER}/crypto_project/raw_historical_data' 
+HDFS_TARGET_PATH = f'/user/{HDFS_USER}/crypto_project/raw_historical_data'
 
 # --- Validate configurations ---
 if not START_DATE_STR:
@@ -58,13 +58,13 @@ def fetch_historical_data(symbol, timeframe, since_timestamp, end_timestamp=None
         try:
             ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since=current_fetch_timestamp, limit=limit)
 
-            if not ohlcv:
+            if not ohlcv: # len(ohlcv) == 0
                 print(f"Không còn dữ liệu {symbol} sau timestamp {datetime.fromtimestamp(current_fetch_timestamp / 1000, timezone.utc)}")
                 break
 
             if end_timestamp:
                 ohlcv = [candle for candle in ohlcv if candle[0] < end_timestamp]
-                if not ohlcv: # All candles in this batch are >= end_timestamp
+                if not ohlcv:
                     print(f"Tất cả nến trong batch này cho {symbol} đều bắt đầu sau hoặc bằng END_DATE. Dừng.")
                     break
             
@@ -78,7 +78,7 @@ def fetch_historical_data(symbol, timeframe, since_timestamp, end_timestamp=None
                  print(f"Timestamp tiếp theo ({datetime.fromtimestamp(current_fetch_timestamp / 1000, timezone.utc)}) sẽ vượt END_DATE. Dừng tải {symbol}.")
                  break
 
-            time.sleep(exchange.rateLimit / 1000) # Respect rate limits
+            time.sleep(exchange.rateLimit / 1000) 
 
         except ccxt.NetworkError as e:
             print(f"Lỗi mạng khi tải {symbol}: {e}, thử lại sau 5 giây...")
@@ -98,14 +98,15 @@ def fetch_historical_data(symbol, timeframe, since_timestamp, end_timestamp=None
 # --- Xử lý và Lưu trữ ---
 if __name__ == "__main__":
     os.makedirs(LOCAL_SAVE_PATH, exist_ok=True)
-    # try:
-    #     subprocess.run(['hdfs', 'dfs', '-mkdir', '-p', HDFS_TARGET_PATH], check=True, capture_output=True)
-    #     print(f"Thư mục HDFS {HDFS_TARGET_PATH} đã được đảm bảo tồn tại.")
-    # except subprocess.CalledProcessError as e:
-    #     print(f"Lỗi khi tạo thư mục HDFS {HDFS_TARGET_PATH}: {e.stderr.decode()}")
-    # except FileNotFoundError:
-    #     print("Lỗi: Lệnh 'hdfs' không tìm thấy. Đảm bảo Hadoop đã được cài đặt và PATH được cấu hình.")
-    #     exit(1)
+    # Đảm bảo thư mục HDFS tồn tại
+    try:
+        subprocess.run(['hdfs', 'dfs', '-mkdir', '-p', HDFS_TARGET_PATH], check=True, capture_output=True)
+        print(f"Thư mục HDFS {HDFS_TARGET_PATH} đã được đảm bảo tồn tại.")
+    except subprocess.CalledProcessError as e:
+        print(f"Lỗi khi tạo thư mục HDFS {HDFS_TARGET_PATH}: {e.stderr.decode()}")
+    except FileNotFoundError:
+        print("Lỗi: Lệnh 'hdfs' không tìm thấy. Đảm bảo Hadoop đã được cài đặt và PATH được cấu hình.")
+        exit(1)
 
 
     start_timestamp_ms = exchange.parse8601(START_DATE_STR)
@@ -117,7 +118,7 @@ if __name__ == "__main__":
             exit(1)
 
     for symbol in SYMBOLS:
-        symbol_filename_base = symbol.replace('/', '_')
+        symbol_filename_base = symbol.replace('/', '_') # e.g., BTC_USDT
         csv_filename = f"{symbol_filename_base}_{TIMEFRAME}.csv"
         local_filepath = os.path.join(LOCAL_SAVE_PATH, csv_filename)
         hdfs_filepath = f"{HDFS_TARGET_PATH}/{csv_filename}"
@@ -130,6 +131,7 @@ if __name__ == "__main__":
             continue
 
         df = pd.DataFrame(ohlcv_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        # Thêm cột datetime_str để batch processor có thể đọc được nếu schema yêu cầu
         df['datetime_str'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True).dt.strftime('%Y-%m-%dT%H:%M:%SZ')
         df = df.sort_values('timestamp')
 
@@ -138,12 +140,10 @@ if __name__ == "__main__":
 
         print(f"Đang upload {local_filepath} lên HDFS: {hdfs_filepath}")
         try:
-            # Xóa file cũ trên HDFS trước khi put (sử dụng -f để không báo lỗi nếu file không tồn tại)
             rm_result = subprocess.run(['hdfs', 'dfs', '-rm', '-f', hdfs_filepath], capture_output=True, text=True)
 
             put_result = subprocess.run(['hdfs', 'dfs', '-put', local_filepath, hdfs_filepath], check=True, capture_output=True, text=True)
             print(f"Upload thành công {symbol} lên HDFS.")
-
         except subprocess.CalledProcessError as e:
             print(f"Lỗi khi upload {symbol} ({local_filepath}) lên HDFS ({hdfs_filepath}):")
             print("Lệnh:", " ".join(e.cmd))

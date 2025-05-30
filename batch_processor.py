@@ -6,16 +6,16 @@ import pyspark.sql.functions as F
 import os
 
 # --- Configuration ---
-HDFS_USER_ENV = os.environ.get('USER', 'hadoop') # Lấy user từ môi trường, fallback 'hadoop'
+HDFS_USER_ENV = os.environ.get('USER', 'hadoop') 
 HDFS_BASE_PATH = f"hdfs://localhost:9000/user/{HDFS_USER_ENV}/crypto_project"
 
 HDFS_INPUT_PATHS = [
-    f"{HDFS_BASE_PATH}/raw_historical_data/*.csv", # Dữ liệu gốc ban đầu
-    f"{HDFS_BASE_PATH}/raw_hourly_updates/*.csv"   # Dữ liệu cập nhật hàng giờ
+    f"{HDFS_BASE_PATH}/raw_historical_data/*.csv", 
+    f"{HDFS_BASE_PATH}/raw_hourly_updates/*.csv"  
 ]
 
 ELASTICSEARCH_HISTORICAL_INDEX = "crypto_historical_data"
-ELASTICSEARCH_NODE_WAN_ONLY = "false" 
+ELASTICSEARCH_NODE_WAN_ONLY = "false"
 
 # Schema cho dữ liệu CSV đầu vào
 schema = StructType([
@@ -25,7 +25,7 @@ schema = StructType([
     StructField("low", DoubleType(), True),
     StructField("close", DoubleType(), True),
     StructField("volume", DoubleType(), True),
-    StructField("datetime_str", StringType(), True) # ISO datetime string từ crawler
+    StructField("datetime_str", StringType(), True) 
 ])
 
 # Đường dẫn đến Elasticsearch Spark JAR
@@ -58,7 +58,6 @@ try:
         if 'spark' in locals() and spark.getActiveSession(): spark.stop()
         exit()
 
-    # --- Trích xuất symbol và timeframe từ tên file ---
     processed_df = raw_df.withColumn("filename_only", regexp_extract(col("input_file"), r'([^/]+)$', 1))
 
     regex_pattern = r"^([A-Z0-9]+(?:_[A-Z0-9]+)*)_([0-9]+[a-zA-Z]+)(?:_update_.*)?\.csv$"
@@ -93,8 +92,8 @@ try:
     df_for_timestamp_processing = df_for_timestamp_processing.withColumn("timestamp_seconds_for_es", col("event_datetime").cast(LongType()))
 
     df_for_processing = df_for_timestamp_processing.select(
-        col("event_datetime").alias("timestamp_dt"),         # Kiểu TimestampType, dùng cho windowing
-        col("timestamp_seconds_for_es").alias("timestamp"),  # Kiểu Long (GIÂY), dùng để ghi vào ES
+        col("event_datetime").alias("timestamp_dt"),         
+        col("timestamp_seconds_for_es").alias("timestamp"),  
         col("symbol"),
         col("timeframe"),
         col("open").cast(DoubleType()),
@@ -129,6 +128,7 @@ try:
         "sma_30"
     )
 
+    # Tạo doc_id (sử dụng cột 'timestamp' đã là số giây)
     df_to_save_es_with_id = df_to_save_es.withColumn(
         "doc_id",
         F.concat(col("symbol"), lit("_"), col("timeframe"), lit("_hist_"), col("timestamp"))

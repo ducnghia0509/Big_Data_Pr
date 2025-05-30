@@ -1,3 +1,0 @@
-export HADOOP_HOME=/path/to/hadoop
-export PATH=$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$PATH
-
